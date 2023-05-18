@@ -23,7 +23,8 @@ RESULTS_PATH = os.environ.get('PBRFF_RESULTS_DIR', join(dirname(abspath(__file__
 def main():
     parser = argparse.ArgumentParser(description="PAC-Bayes RFF Experiment")
     parser.add_argument('-d', '--dataset', type=str, default="breast")
-    parser.add_argument('-e', '--experiments', type=str, nargs='+', default=["landmarks_based"])
+    #parser.add_argument('-e', '--experiments', type=str, nargs='+', default=["landmarks_based"])
+    parser.add_argument('-e', '--experiments', type=str, nargs='+', default=["greedy_kernel"])
     parser.add_argument('-l', '--landmarks-method', type=str, nargs='+', default=["random"])
     parser.add_argument('-n', '--n-cpu', type=int, default=-1)
     args = parser.parse_args()
@@ -65,8 +66,13 @@ def main():
            'rho': [1.0, 0.1, 0.01, 0.001, 0.0001],
            'greedy_kernel_N': 20000,
            'greedy_kernel_D': [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250, 275,\
-                               300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1250, 1500, 1750, 2000, 2500, 3000,\
-                               3500, 4000, 4500, 5000]}
+                               300, 350, 400, 450, 500],
+            'maxTry' : 5,
+            'p' : 10,
+            'epsilon' : 0.1}
+           #'greedy_kernel_D': [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250, 275,\
+           #                    300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1250, 1500, 1750, 2000, 2500, 3000,\
+           #                    3500, 4000, 4500, 5000]}
 
     ### Experiments ###
 
@@ -130,20 +136,24 @@ def main():
         # Initializing greedy kernel learner
         greedy_kernel_learner_cache_file = join(paths['cache'], "greedy_kernel_learner.pkl")
         if not exists(greedy_kernel_learner_cache_file):
-            greedy_kernel_learner = GreedyKernelLearner(dataset, hps['C'], gamma, hps['greedy_kernel_N'], random_state)
+            # Ajout des hyperparamètres par Jacob
+            greedy_kernel_learner = GreedyKernelLearner(dataset, hps['C'], hps['maxTry'], hps['p'], hps['epsilon'], gamma, hps['greedy_kernel_N'], random_state)
             greedy_kernel_learner.sample_omega()
             greedy_kernel_learner.compute_loss()
 
             with open(greedy_kernel_learner_cache_file, 'wb') as out_file:
                 pickle.dump(greedy_kernel_learner, out_file, protocol=4)
 
-        param_grid = ParameterGrid([{'algo': ["pbrff"], 'param': hps['beta']},
-                                    {'algo': ["okrff"], 'param': hps['rho']},
-                                    {'algo': ["rff"]}])
+        # param_grid = ParameterGrid([{'algo': ["pbrff"], 'param': hps['beta']},
+        #                             {'algo': ["okrff"], 'param': hps['rho']},
+        #                             {'algo': ["rff"]}])
+
+        param_grid = ParameterGrid([{'algo': ["pbrff"], 'param': hps['beta']}])
 
         param_grid = list(param_grid)
+        print(param_grid)
         random_state.shuffle(param_grid)
-        results_files = {join(paths['greedy_kernel'], f"{p['algo']}" + (f"_{p['param']}.pkl" if 'param' in p else ".pkl")): p \
+        results_files = {join(paths['greedy_kernel'], f"{p['algo']}_jacob_test" + (f"_{p['param']}.pkl" if 'param' in p else ".pkl")): p \
                                                                                                             for p in param_grid}
         results_to_compute = [dict({"output_file":f}, **p) for f, p in results_files.items() if not(exists(f))]
 

@@ -82,7 +82,7 @@ class GreedyKernelLearner(object):
     ok_Q : array, shape = [N,]
         Optimized Kernel distributions over the features.
     """
-    def __init__(self, dataset, C_range, gamma, N, random_state=42):
+    def __init__(self, dataset, C_range, maxTry, p, epsilon, gamma, N, random_state=42):
         self.dataset = dataset
         self.n, self.d = self.dataset['X_train'].shape
         self.C_range = C_range
@@ -92,6 +92,9 @@ class GreedyKernelLearner(object):
         self.random_state = check_random_state(random_state)
         self.loss = None
         self.time = []
+        self.p = p # Ajout de l'hyperparamètre par Jacob
+        self.maxTry = maxTry # Ajout de l'hyperparamètre par Jacob
+        self.epsilon = epsilon # Ajout de l'hyperparamètre par Jacob
 
     def sample_omega(self):
         """Randomly sample omega."""
@@ -166,6 +169,67 @@ class GreedyKernelLearner(object):
         self.pb_Q = np.exp(self.pb_Q)
         self.time.append(("pb_Q", (time.time() - start_time) * 1000))
 
+    # Ajout de l'algorithme vorace greedy
+    # ----------------------------------------------------------------------------------------
+
+    def greedy_pbrff(self, Dmax):
+        """
+        Greedy algorithm that use PAC-Bayes techniques to choose the kernel_features.
+
+        Parameters
+        ----------
+        omega : array, shape = [d, N]
+            omega vector sampled from the Fourier distribution.
+
+        pb_Q : array, shape = [N,]
+            PAC-Bayesian pseudo-posterior Q distribution over the Fourier features.
+
+        Dmax : int
+            Maximum number of RFF.
+
+        maxTry : int
+            Maximum number of tries.
+
+        p : int
+            Number of RFF choose at each step p.
+
+        loss : array, shape = [N,]
+            Empirical losses matrix.
+
+        epsilon : int
+            Hyperparameter.
+
+        Returns
+        -------
+        H : array
+            Array that contains index of RFF in the array Omega.
+        """
+
+        H = np.array([]) # Initialize as empty array 
+        Try = 0 
+
+        while H.size < Dmax:
+            # Pick p RFF Ws = {s = 1, ..., p}
+            rff_index = self.random_state.choice(self.omega.shape[1], self.p, replace=True, p=self.pb_Q)
+
+            # Calculate E 
+            loss_value = self.loss[rff_index]
+            E = (self.p / 2 * self.N) - (1 / self.N) * np.sum(loss_value)
+            
+            if E >= self.epsilon:
+                H = np.concatenate((H, rff_index), axis=0)
+                #H = H + rff_index.tolist()
+                Try = 0
+            else:
+                if Try > self.maxTry:
+                    break
+                else:
+                    Try += 1
+
+        return H.astype(int)
+
+    # ----------------------------------------------------------------------------------------
+
     def learn_pbrff(self, D):
         """Learn using PAC-Bayes Random Fourier Features method
 
@@ -179,7 +243,8 @@ class GreedyKernelLearner(object):
         results: dict
             Relevant metrics and informations.
         """
-        kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+        #kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+        kernel_features = self.omega[:, self.greedy_pbrff(D)]
 
         transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
         transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
@@ -203,7 +268,7 @@ class GreedyKernelLearner(object):
         f1 = f1_score(self.dataset['y_test'], y_pred)
 
         return dict([("dataset", self.dataset['name']), ("exp", 'greedy'), ("algo", 'PBRFF'), ("C", C), ("D", D), ("N", self.N), \
-                    ("gamma", self.gamma), ("beta", self.beta), ("train_error", train_err), ("val_error", val_err), \
+                    ("gamma", self.gamma), ("beta", self.beta), ("maxTry", self.maxTry), ("p", self.p), ("epsilon", self.epsilon), ("train_error", train_err), ("val_error", val_err), \
                     ("test_error", test_err), ("f1", f1), ("time", self.time)])
 
     def compute_ok_Q(self, rho):
@@ -385,6 +450,7 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
         greedy_kernel_learner.compute_ok_Q(rho=args['param'])
         for D in D_range:
             tmp_results.append(greedy_kernel_learner.learn_okrff(D))
+
 
     with open(args["output_file"], 'wb') as out_file:
         pickle.dump(tmp_results, out_file, protocol=4)
