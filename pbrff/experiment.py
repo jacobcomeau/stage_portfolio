@@ -65,11 +65,10 @@ def main():
            'landmarks_D': [8, 16, 32, 64, 128],
            'rho': [1.0, 0.1, 0.01, 0.001, 0.0001],
            'greedy_kernel_N': 20000,
-           'greedy_kernel_D': [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250, 275,\
-                               300, 350, 400, 450, 500],
-            'maxTry' : 5,
-            'p' : 10,
-            'epsilon' : 0.1}
+           'greedy_kernel_D': [1, 10, 25, 50, 100, 250, 350, 500, 750, 1000],
+            'maxTry' : [2, 4, 5, 7, 10],
+            'p' : [1, 5, 10, 15, 20],
+            'epsilon' : np.logspace(-3, -0.53, 5)}
            #'greedy_kernel_D': [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250, 275,\
            #                    300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1250, 1500, 1750, 2000, 2500, 3000,\
            #                    3500, 4000, 4500, 5000]}
@@ -151,7 +150,6 @@ def main():
         param_grid = ParameterGrid([{'algo': ["pbrff"], 'param': hps['beta']}])
 
         param_grid = list(param_grid)
-        print(param_grid)
         random_state.shuffle(param_grid)
         results_files = {join(paths['greedy_kernel'], f"{p['algo']}_jacob_test" + (f"_{p['param']}.pkl" if 'param' in p else ".pkl")): p \
                                                                                                             for p in param_grid}

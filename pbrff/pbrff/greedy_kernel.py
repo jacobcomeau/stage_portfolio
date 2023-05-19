@@ -10,6 +10,8 @@ from sklearn.utils import check_random_state
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.svm import LinearSVC
 
+import optuna
+
 class GreedyKernelLearner(object):
     """Greedy Kernel learner class
 
@@ -82,7 +84,7 @@ class GreedyKernelLearner(object):
     ok_Q : array, shape = [N,]
         Optimized Kernel distributions over the features.
     """
-    def __init__(self, dataset, C_range, maxTry, p, epsilon, gamma, N, random_state=42):
+    def __init__(self, dataset, C_range, maxTry_range, p_range, epsilon_range, gamma, N, random_state=42):
         self.dataset = dataset
         self.n, self.d = self.dataset['X_train'].shape
         self.C_range = C_range
@@ -92,9 +94,9 @@ class GreedyKernelLearner(object):
         self.random_state = check_random_state(random_state)
         self.loss = None
         self.time = []
-        self.p = p # Ajout de l'hyperparamètre par Jacob
-        self.maxTry = maxTry # Ajout de l'hyperparamètre par Jacob
-        self.epsilon = epsilon # Ajout de l'hyperparamètre par Jacob
+        self.p_range = p_range # Ajout de la liste de l'hyperparamètre p par Jacob
+        self.maxTry_range = maxTry_range # Ajout de la liste de l'hyperparamètre maxTry par Jacob
+        self.epsilon_range = epsilon_range # Ajout de la liste de l'hyperparamètre epsilon par Jacob
 
     def sample_omega(self):
         """Randomly sample omega."""
@@ -172,7 +174,7 @@ class GreedyKernelLearner(object):
     # Ajout de l'algorithme vorace greedy
     # ----------------------------------------------------------------------------------------
 
-    def greedy_pbrff(self, Dmax):
+    def greedy_pbrff(self, Dmax, maxTry, p, epsilon):
         """
         Greedy algorithm that use PAC-Bayes techniques to choose the kernel_features.
 
@@ -210,27 +212,113 @@ class GreedyKernelLearner(object):
 
         while H.size < Dmax:
             # Pick p RFF Ws = {s = 1, ..., p}
-            rff_index = self.random_state.choice(self.omega.shape[1], self.p, replace=True, p=self.pb_Q)
+            rff_index = self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)
 
             # Calculate E 
             loss_value = self.loss[rff_index]
-            E = (self.p / 2 * self.N) - (1 / self.N) * np.sum(loss_value)
+            E = (p / 2 * self.N) - (1 / self.N) * np.sum(loss_value)
             
-            if E >= self.epsilon:
+            if E >= epsilon:
                 H = np.concatenate((H, rff_index), axis=0)
                 #H = H + rff_index.tolist()
                 Try = 0
             else:
-                if Try > self.maxTry:
+                if Try > maxTry:
                     break
                 else:
                     Try += 1
 
-        return H.astype(int)
+        return H.size, H.astype(int)
 
     # ----------------------------------------------------------------------------------------
 
-    def learn_pbrff(self, D):
+    # Ajout de la méthode pour faire l'optimisation bayésienne pour choisir les hyperparamètres C, p, maxTry et epsilon
+    # ----------------------------------------------------------------------------------------
+
+    def bayesian_optimiation_(self, trial, D):
+        # TODO À finir
+        self.compute_pb_Q(beta=trial.suggest_float("beta", 1e-3, 1e3, log=True))
+        C = trial.suggest_float("C", 1, 10000)
+        maxTry = trial.suggest_float("maxTry", 2, 10)
+        p = trial.suggest_float("p", 1, 20)
+        epsilon = trial.suggest_float("epsilon", 1e-3, 3e-3)
+        kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+        transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
+        transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
+        clf = LinearSVC(C=trial.suggest_float("C", 1, 10000), random_state=self.random_state)
+        clf.fit(transformed_X_train, self.dataset['y_train'])
+        return 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
+    
+    def bayesian_optimiation(self):
+        # TODO À finir
+        study = optuna.create_study()
+        #f = partial(self.bayesian_optimization_, D=D)
+        #study.optimize(f, n_trials=100)
+
+        # Computing relevant metrics
+        val_err = study.best_trial.values[0]
+        C = study.best_params['C']
+        beta = study.best_params['beta']
+
+
+    # ----------------------------------------------------------------------------------------
+
+    # Ajout de la méthode pour le GridSearch pour choisir les hyperparamètres C, p, maxTry et epsilon
+    # ----------------------------------------------------------------------------------------
+
+    def gridSearch(self, D, method):
+
+        if method == "greedy":
+            param_list = []
+
+            start_time = time.time()
+            for maxTry in self.maxTry_range:
+                for p in self.p_range:
+                    for epsilon in self.epsilon_range:
+                        for C in self.C_range:
+            
+                            kernel_features = self.omega[:, self.greedy_pbrff(D, maxTry, p, epsilon)[1]]
+
+                            transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
+                            transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
+
+                            clf = LinearSVC(C=C, random_state=self.random_state)
+                            clf.fit(transformed_X_train, self.dataset['y_train'])
+                            err = 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
+                            param_list.append((err, [C, maxTry, p, epsilon], clf))
+
+            self.time.append(("learning", (time.time() - start_time) * 1000))
+
+            _, best_params, clf = sorted(param_list, key=lambda x: x[0])[0]
+
+            return best_params
+        
+        elif method == "base":
+
+            kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+
+            transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
+            transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
+
+            # C search using a validation set
+            C_search = []
+            start_time = time.time()
+            for C in self.C_range:
+                clf = LinearSVC(C=C, random_state=self.random_state)
+                clf.fit(transformed_X_train, self.dataset['y_train'])
+                err = 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
+                C_search.append((err, C, clf))
+            self.time.append(("learning", (time.time() - start_time) * 1000))
+
+            # Computing relevant metrics
+            _, C, clf = sorted(C_search, key=lambda x: x[0])[0]
+        
+        return C
+
+
+    # ----------------------------------------------------------------------------------------
+
+    def learn_pbrff(self, D, method, C, maxTry=0, p=0, epsilon=0):
         """Learn using PAC-Bayes Random Fourier Features method
 
         Parameters
@@ -238,38 +326,60 @@ class GreedyKernelLearner(object):
         D: int
             Number of Fourier features to subsample.
 
+        method: String
+            Method to choose between base or greedy.
+
         Returns
         -------
         results: dict
             Relevant metrics and informations.
         """
-        #kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
-        kernel_features = self.omega[:, self.greedy_pbrff(D)]
+
+        if method == "base":
+            # Pour le modèle de base
+            kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+        elif method == "greedy":
+            # Pour le modèle avec l'algorithme vorace
+            Dmax, index = self.greedy_pbrff(D, maxTry, p, epsilon)
+            kernel_features = self.omega[:, index]
 
         transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
         transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
         transformed_X_test = self.transform_sincos(kernel_features, self.dataset['X_test'], D)
 
-        # C search using a validation set
-        C_search = []
-        start_time = time.time()
-        for C in self.C_range:
-            clf = LinearSVC(C=C, random_state=self.random_state)
-            clf.fit(transformed_X_train, self.dataset['y_train'])
-            err = 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
-            C_search.append((err, C, clf))
-        self.time.append(("learning", (time.time() - start_time) * 1000))
+        # # C search using a validation set
+        # C_search = []
+        # start_time = time.time()
+        # for C in self.C_range:
+        #     clf = LinearSVC(C=C, random_state=self.random_state)
+        #     clf.fit(transformed_X_train, self.dataset['y_train'])
+        #     err = 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
+        #     C_search.append((err, C, clf))
+        # self.time.append(("learning", (time.time() - start_time) * 1000))
+
+
+        clf = LinearSVC(C=C, random_state=self.random_state)
+        clf.fit(transformed_X_train, self.dataset['y_train'])
+        err = 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
 
         # Computing relevant metrics
-        val_err, C, clf = sorted(C_search, key=lambda x: x[0])[0]
+        val_err = err
         train_err = 1 - accuracy_score(self.dataset['y_train'], clf.predict(transformed_X_train))
         y_pred = clf.predict(transformed_X_test)
         test_err = 1 - accuracy_score(self.dataset['y_test'], y_pred)
         f1 = f1_score(self.dataset['y_test'], y_pred)
 
-        return dict([("dataset", self.dataset['name']), ("exp", 'greedy'), ("algo", 'PBRFF'), ("C", C), ("D", D), ("N", self.N), \
-                    ("gamma", self.gamma), ("beta", self.beta), ("maxTry", self.maxTry), ("p", self.p), ("epsilon", self.epsilon), ("train_error", train_err), ("val_error", val_err), \
+        if method == "base":
+            # Pour le modèle de base
+            return dict([("dataset", self.dataset['name']), ("exp", 'greedy'), ("algo", 'PBRFF'), ("C", C), ("D", D), ("N", self.N), \
+                    ("gamma", self.gamma), ("beta", self.beta), ("train_error", train_err), ("val_error", val_err), \
                     ("test_error", test_err), ("f1", f1), ("time", self.time)])
+        elif method == "greedy":
+            # Pour le modèle avec l'algorithme vorace
+            return dict([("dataset", self.dataset['name']), ("exp", 'greedy'), ("algo", 'PBRFF'), ("C", C), ("D", D), ("N", self.N), \
+                    ("gamma", self.gamma), ("beta", self.beta), ("Dmax", Dmax), ("maxTry", maxTry), ("p", p), ("epsilon", epsilon), ("train_error", train_err), ("val_error", val_err), \
+                    ("test_error", test_err), ("f1", f1), ("time", self.time)])
+
 
     def compute_ok_Q(self, rho):
         """Compute Optimized Kernel distribution over the Fourier features as implemented by Sinha and Duchi 2016
@@ -442,8 +552,13 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
     elif args["algo"] == "pbrff":
         print(f"Processing: pbrff with beta: {args['param']}")
         greedy_kernel_learner.compute_pb_Q(beta=args['param'])
+        
         for D in D_range:
-            tmp_results.append(greedy_kernel_learner.learn_pbrff(D))
+            # GridSearch
+            best_params = greedy_kernel_learner.gridSearch(D, "greedy")
+            # C'est ici qu'on va appeler l'optimisation bayésienne
+
+            tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
 
     elif args["algo"] == "okrff":
         print(f"Processing: okrff with rho: {args['param']}")
