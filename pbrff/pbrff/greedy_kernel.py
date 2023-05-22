@@ -9,6 +9,7 @@ from scipy.special import logsumexp
 from sklearn.utils import check_random_state
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.svm import LinearSVC
+from functools import partial
 
 import optuna
 
@@ -211,8 +212,13 @@ class GreedyKernelLearner(object):
         Try = 0 
 
         while H.size < Dmax:
-            # Pick p RFF Ws = {s = 1, ..., p}
-            rff_index = self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)
+            
+            if H.size + p <= Dmax:
+                # Pick p RFF Ws = {s = 1, ..., p}
+                rff_index = self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)
+            else:
+                # Pick Dmax - H.size RFF
+                rff_index = self.random_state.choice(self.omega.shape[1], Dmax - H.size, replace=True, p=self.pb_Q)
 
             # Calculate E 
             loss_value = self.loss[rff_index]
@@ -235,30 +241,44 @@ class GreedyKernelLearner(object):
     # Ajout de la méthode pour faire l'optimisation bayésienne pour choisir les hyperparamètres C, p, maxTry et epsilon
     # ----------------------------------------------------------------------------------------
 
-    def bayesian_optimiation_(self, trial, D):
-        # TODO À finir
-        self.compute_pb_Q(beta=trial.suggest_float("beta", 1e-3, 1e3, log=True))
-        C = trial.suggest_float("C", 1, 10000)
-        maxTry = trial.suggest_float("maxTry", 2, 10)
-        p = trial.suggest_float("p", 1, 20)
-        epsilon = trial.suggest_float("epsilon", 1e-3, 3e-3)
-        kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+    def bayesian_optimization_(self, trial, D, method):
+
+        if method == "base":
+            kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+        
+        elif method == "greedy":
+            maxTry = trial.suggest_float("maxTry", 2, 10)
+            p = trial.suggest_float("p", 1, 20)
+            epsilon = trial.suggest_float("epsilon", 1e-3, 3e-1)
+
+            _, index = self.greedy_pbrff(D, maxTry, p, epsilon)
+            kernel_features = self.omega[:, index]
+
+        
         transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
         transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
         clf = LinearSVC(C=trial.suggest_float("C", 1, 10000), random_state=self.random_state)
         clf.fit(transformed_X_train, self.dataset['y_train'])
         return 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
-    
-    def bayesian_optimiation(self):
-        # TODO À finir
-        study = optuna.create_study()
-        #f = partial(self.bayesian_optimization_, D=D)
-        #study.optimize(f, n_trials=100)
 
-        # Computing relevant metrics
-        val_err = study.best_trial.values[0]
-        C = study.best_params['C']
-        beta = study.best_params['beta']
+    
+    def bayesian_optimiation(self, D, method):
+        
+        study = optuna.create_study()
+        f = partial(self.bayesian_optimization_, method=method, D=D)
+        study.optimize(f, n_trials=100)
+
+        if method == "base":
+            C = study.best_params['C']
+            return C
+        
+        elif method == "greedy":
+            maxTry = study.best_params['maxTry']
+            p = study.best_params['p']
+            epsilon = study.best_params['epsilon']
+            C = study.best_params['C']
+
+            return [C, maxTry, p, epsilon]
 
 
     # ----------------------------------------------------------------------------------------
@@ -313,7 +333,7 @@ class GreedyKernelLearner(object):
             # Computing relevant metrics
             _, C, clf = sorted(C_search, key=lambda x: x[0])[0]
         
-        return C
+            return C
 
 
     # ----------------------------------------------------------------------------------------
@@ -555,10 +575,12 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
         
         for D in D_range:
             # GridSearch
-            best_params = greedy_kernel_learner.gridSearch(D, "greedy")
+            #best_params = greedy_kernel_learner.gridSearch(D, "greedy")
+            
             # C'est ici qu'on va appeler l'optimisation bayésienne
+            best_params = greedy_kernel_learner.bayesian_optimiation(D, "base")
 
-            tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
+            tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "base", best_params))
 
     elif args["algo"] == "okrff":
         print(f"Processing: okrff with rho: {args['param']}")
