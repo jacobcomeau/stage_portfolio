@@ -208,6 +208,13 @@ class GreedyKernelLearner(object):
             Array that contains index of RFF in the array Omega.
         """
 
+        loss_list = []
+        E_list = []
+
+        # test = (p / (2 * self.N)) - (np.sum(self.loss[self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)]) * (1 / self.N))
+        # print(f"Sum loss : {test}")
+        # print(f"Step : {10**(np.round(np.log10(test)))}")
+
         H = np.array([]) # Initialize as empty array 
         Try = 0 
 
@@ -222,19 +229,21 @@ class GreedyKernelLearner(object):
 
             # Calculate E 
             loss_value = self.loss[rff_index]
-            E = (p / 2 * self.N) - (1 / self.N) * np.sum(loss_value)
-            
+            loss_list.append(loss_value)
+            E = (p / (2 * self.N)) - ((1 / self.N) * np.sum(loss_value))
+            E_list.append(E)
+
             if E >= epsilon:
                 H = np.concatenate((H, rff_index), axis=0)
                 #H = H + rff_index.tolist()
                 Try = 0
             else:
-                if Try > maxTry:
+                if Try >= maxTry:
                     break
                 else:
                     Try += 1
 
-        return H.size, H.astype(int)
+        return H.size, H.astype(int), loss_list, E_list
 
     # ----------------------------------------------------------------------------------------
 
@@ -247,17 +256,27 @@ class GreedyKernelLearner(object):
             kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
         
         elif method == "greedy":
-            maxTry = trial.suggest_float("maxTry", 2, 10)
-            p = trial.suggest_float("p", 1, 20)
-            epsilon = trial.suggest_float("epsilon", 1e-3, 3e-1)
-
-            _, index = self.greedy_pbrff(D, maxTry, p, epsilon)
-            kernel_features = self.omega[:, index]
+            maxTry = trial.suggest_int("maxTry", 2, 10)
+            p = trial.suggest_int("p", 1, 50)
+            epsilon = trial.suggest_float("epsilon", 1e-5 , 3e-1, log=True)
+            # E_avg = (p / (2 * self.N)) - (np.sum(self.loss[self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)]) * (1 / self.N))
+            # eps_min = E_avg - (10**(np.round(np.log10(E_avg))))
+            # eps_max = E_avg + (10**(np.round(np.log10(E_avg))))
+            # epsilon = trial.suggest_float("epsilon", eps_min, eps_max, step=(10**(np.round(np.log10(E_avg)))))
+            # epsilon = E_avg - (10**(np.round(np.log10(E_avg))))
+            # print(f"Epsilon : {epsilon}")
+            _, index, _, _ = self.greedy_pbrff(D, maxTry, p, epsilon)
+            if index.size == 0:
+                return 1
+            else:
+                kernel_features = self.omega[:, index]
+            #kernel_features = self.omega[:, index]
 
         
         transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
         transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
         clf = LinearSVC(C=trial.suggest_float("C", 1, 10000), random_state=self.random_state)
+        #clf = LinearSVC(C=100, random_state=self.random_state)
         clf.fit(transformed_X_train, self.dataset['y_train'])
         return 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
 
@@ -276,7 +295,10 @@ class GreedyKernelLearner(object):
             maxTry = study.best_params['maxTry']
             p = study.best_params['p']
             epsilon = study.best_params['epsilon']
+            # E_avg = (p / (2 * self.N)) - (np.sum(self.loss[self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)]) * (1 / self.N))
+            # epsilon = E_avg - (10**(np.round(np.log10(E_avg))))
             C = study.best_params['C']
+            #C = 100
 
             return [C, maxTry, p, epsilon]
 
@@ -360,8 +382,12 @@ class GreedyKernelLearner(object):
             kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
         elif method == "greedy":
             # Pour le modèle avec l'algorithme vorace
-            Dmax, index = self.greedy_pbrff(D, maxTry, p, epsilon)
-            kernel_features = self.omega[:, index]
+            nbrD_choisi, index, loss_list, E_list = self.greedy_pbrff(D, maxTry, p, epsilon)
+            print(f"Nbr d'index : {index}")
+            if index.size == 0:
+                kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+            else:
+                kernel_features = self.omega[:, index]
 
         transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
         transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
@@ -397,7 +423,7 @@ class GreedyKernelLearner(object):
         elif method == "greedy":
             # Pour le modèle avec l'algorithme vorace
             return dict([("dataset", self.dataset['name']), ("exp", 'greedy'), ("algo", 'PBRFF'), ("C", C), ("D", D), ("N", self.N), \
-                    ("gamma", self.gamma), ("beta", self.beta), ("Dmax", Dmax), ("maxTry", maxTry), ("p", p), ("epsilon", epsilon), ("train_error", train_err), ("val_error", val_err), \
+                    ("gamma", self.gamma), ("beta", self.beta), ("Loss_l", loss_list), ("E_l", E_list), ("nbrD_choisi", nbrD_choisi), ("maxTry", maxTry), ("p", p), ("epsilon", epsilon), ("train_error", train_err), ("val_error", val_err), \
                     ("test_error", test_err), ("f1", f1), ("time", self.time)])
 
 
@@ -578,9 +604,10 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
             #best_params = greedy_kernel_learner.gridSearch(D, "greedy")
             
             # C'est ici qu'on va appeler l'optimisation bayésienne
-            best_params = greedy_kernel_learner.bayesian_optimiation(D, "base")
+            best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
 
-            tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "base", best_params))
+            #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "base", 100))
+            tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
 
     elif args["algo"] == "okrff":
         print(f"Processing: okrff with rho: {args['param']}")
