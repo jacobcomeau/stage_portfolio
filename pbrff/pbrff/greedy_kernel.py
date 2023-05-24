@@ -265,7 +265,7 @@ class GreedyKernelLearner(object):
             # epsilon = trial.suggest_float("epsilon", eps_min, eps_max, step=(10**(np.round(np.log10(E_avg)))))
             # epsilon = E_avg - (10**(np.round(np.log10(E_avg))))
             # print(f"Epsilon : {epsilon}")
-            _, index, _, _ = self.greedy_pbrff(D, maxTry, p, epsilon)
+            nbrD_choisi, index, _, _ = self.greedy_pbrff(D, maxTry, p, epsilon)
             if index.size == 0:
                 return 1
             else:
@@ -273,8 +273,8 @@ class GreedyKernelLearner(object):
             #kernel_features = self.omega[:, index]
 
         
-        transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
-        transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
+        transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], nbrD_choisi)
+        transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], nbrD_choisi)
         clf = LinearSVC(C=trial.suggest_float("C", 1, 10000), random_state=self.random_state)
         #clf = LinearSVC(C=100, random_state=self.random_state)
         clf.fit(transformed_X_train, self.dataset['y_train'])
@@ -380,6 +380,11 @@ class GreedyKernelLearner(object):
         if method == "base":
             # Pour le modèle de base
             kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+
+            transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
+            transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
+            transformed_X_test = self.transform_sincos(kernel_features, self.dataset['X_test'], D)
+
         elif method == "greedy":
             # Pour le modèle avec l'algorithme vorace
             nbrD_choisi, index, loss_list, E_list = self.greedy_pbrff(D, maxTry, p, epsilon)
@@ -389,9 +394,9 @@ class GreedyKernelLearner(object):
             else:
                 kernel_features = self.omega[:, index]
 
-        transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], D)
-        transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], D)
-        transformed_X_test = self.transform_sincos(kernel_features, self.dataset['X_test'], D)
+            transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], nbrD_choisi)
+            transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], nbrD_choisi)
+            transformed_X_test = self.transform_sincos(kernel_features, self.dataset['X_test'], nbrD_choisi)
 
         # # C search using a validation set
         # C_search = []
