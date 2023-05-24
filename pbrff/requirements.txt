@@ -1,0 +1,17 @@
+kiwisolver==1.4.4
+optuna==2.10.0
+appdirs==1.4.3
+distlib==0.3.0
+filelock==3.0.12
+joblib==1.2.0+computecanada
+more-itertools==8.2.0
+numpy==1.23.0+computecanada
+pandas==1.5.0+computecanada
+python-dateutil==2.8.2+computecanada
+pytz==2022.7+computecanada
+scikit_learn==1.1.2+computecanada
+scipy==1.9.3+computecanada
+setuptools-scm==3.5.0
+six==1.14.0
+threadpoolctl==3.1.0+computecanada
+virtualenv==20.0.18

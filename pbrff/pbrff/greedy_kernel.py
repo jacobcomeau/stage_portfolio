@@ -257,7 +257,7 @@ class GreedyKernelLearner(object):
         
         elif method == "greedy":
             maxTry = trial.suggest_int("maxTry", 2, 10)
-            p = trial.suggest_int("p", 1, 50)
+            p = trial.suggest_int("p", 1, 20)
             epsilon = trial.suggest_float("epsilon", 1e-5 , 3e-1, log=True)
             # E_avg = (p / (2 * self.N)) - (np.sum(self.loss[self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)]) * (1 / self.N))
             # eps_min = E_avg - (10**(np.round(np.log10(E_avg))))

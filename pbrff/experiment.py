@@ -59,16 +59,13 @@ def main():
 
     # HPs for landmarks-based and greedy kernel learning experiments
     hps = {'gamma': np.logspace(-7, 2, 10),
-           #'C': np.logspace(-5, 4, 10),
-           'C': np.array([100]),
-           #'beta': np.logspace(-3, 3, 7),
-           'beta': np.array([10]),
+           'C': np.logspace(-5, 4, 10),
+           'beta': np.logspace(-3, 3, 7),
            'landmarks_percentage': [0.01, 0.05, 0.1, 0.15, 0.20, 0.25],
            'landmarks_D': [8, 16, 32, 64, 128],
            'rho': [1.0, 0.1, 0.01, 0.001, 0.0001],
            'greedy_kernel_N': 20000,
-           #'greedy_kernel_D': [1, 10, 25, 50, 100, 250, 350, 500, 750, 1000],
-           'greedy_kernel_D': [100],
+           'greedy_kernel_D': [1, 10, 25, 50, 100, 250, 350, 500, 750, 1000],
             'maxTry' : [2, 4, 5, 7, 10],
             'p' : [1, 5, 10, 15, 20],
             'epsilon' : np.logspace(-3, -0.53, 5)}

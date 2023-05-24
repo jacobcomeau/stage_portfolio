@@ -11,13 +11,17 @@ def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time,
                         
     submission_script = ""
     submission_script += f"#!/bin/bash\n"
-    submission_script += f"#SBATCH --account=def-laviolet\n"
+    submission_script += f"#SBATCH --account=def-pager47\n"
     submission_script += f"#SBATCH --nodes=1\n" 
-    submission_script += f"#SBATCH --time={time}:00:00\n" 
+    submission_script += f"#SBATCH --time={time}:00:00\n"
+    submission_script += f"#SBATCH --mem=90G\n#SBATCH --mail-type=END,FAIL\n#SBATCH --mail-user=mabaz21@ulaval.ca\n" 
     submission_script += f"#SBATCH --output={exp_file + '.out'}\n\n" 
+    submission_script += "module load python/3.8\n virtualenv --no-download $SLURM_TMPDIR/env\n"
+    submission_script += "source $SLURM_TMPDIR/env/activate\n pip install --no-index --upgrade pip\n"
+    submission_script += "pip install --no-index -r requirements.txt\n"
     submission_script += f"cd $HOME/dev/git/pbrff\n" 
     submission_script += f"date\n" 
-    submission_script += f"python experiment.py -d {dataset} -e {' '.join(experiments)} -l {' '.join(landmarks_method)} -n {n_cpu} "
+    submission_script += f"python experiment.py -d {dataset} -e {' '.join(experiments)} -l {' '.join(landmarks_method)} -n 1 "
 
     submission_path = exp_file + ".sh"
     with open(submission_path, 'w') as out_file:
@@ -26,12 +30,12 @@ def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time,
     call(["sbatch", submission_path])
 
 def main():
-    datasets = ["breast", "ads", "adult", "mnist17", "mnist49", "mnist56"]
+    datasets = ["ads", "mnist17", "mnist49", "mnist56"] #[ "ads", "adult", "mnist17", "mnist49", "mnist56"]
     experiments = ["greedy_kernel"]
     landmarks_method = ["random"]
     n_cpu = 40
-    time = 6
-    
+    time = 23
+
     dispatch_path = join(RESULTS_PATH, "dispatch")
     if not exists(dispatch_path): makedirs(dispatch_path)
     
