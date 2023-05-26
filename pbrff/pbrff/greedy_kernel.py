@@ -2,8 +2,10 @@ import pickle
 import time
 
 from math import sqrt
+from os.path import join, abspath, dirname, exists
 
 import numpy as np
+import multiprocess as mp
 from scipy.special import logsumexp
 
 from sklearn.utils import check_random_state
@@ -254,11 +256,12 @@ class GreedyKernelLearner(object):
 
         if method == "base":
             kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
+            nbrD_choisi = D
         
         elif method == "greedy":
             maxTry = trial.suggest_int("maxTry", 2, 10)
             p = trial.suggest_int("p", 1, 20)
-            epsilon = trial.suggest_float("epsilon", 1e-5 , 3e-1, log=True)
+            epsilon = trial.suggest_float("epsilon", 1e-7 , 3e-1, log=True)
             # E_avg = (p / (2 * self.N)) - (np.sum(self.loss[self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)]) * (1 / self.N))
             # eps_min = E_avg - (10**(np.round(np.log10(E_avg))))
             # eps_max = E_avg + (10**(np.round(np.log10(E_avg))))
@@ -279,6 +282,10 @@ class GreedyKernelLearner(object):
         #clf = LinearSVC(C=100, random_state=self.random_state)
         clf.fit(transformed_X_train, self.dataset['y_train'])
         return 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
+    
+        # TODO À tester les pénalité pour permettre d'essayer d'obtenir D < Dmax
+        # Option 1 : Multiplier le score du SVM par D/Dmax 
+        # Option 2 : Score du SVM + (1/2 * D/Dmax)
 
     
     def bayesian_optimiation(self, D, method):
@@ -388,7 +395,6 @@ class GreedyKernelLearner(object):
         elif method == "greedy":
             # Pour le modèle avec l'algorithme vorace
             nbrD_choisi, index, loss_list, E_list = self.greedy_pbrff(D, maxTry, p, epsilon)
-            print(f"Nbr d'index : {index}")
             if index.size == 0:
                 kernel_features = self.omega[:, self.random_state.choice(self.omega.shape[1], D, replace=True, p=self.pb_Q)]
             else:
@@ -603,16 +609,27 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
     elif args["algo"] == "pbrff":
         print(f"Processing: pbrff with beta: {args['param']}")
         greedy_kernel_learner.compute_pb_Q(beta=args['param'])
-        
-        for D in D_range:
-            # GridSearch
-            #best_params = greedy_kernel_learner.gridSearch(D, "greedy")
-            
-            # C'est ici qu'on va appeler l'optimisation bayésienne
-            best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
 
-            #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "base", 100))
-            tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
+        def parrallel_exec(D):
+            best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
+            #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
+            return greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3])
+
+        n_cpu = mp.cpu_count()
+        p = mp.Pool(n_cpu)
+        with p:
+            tmp_results = p.map(parrallel_exec, D_range)
+
+        
+        # for D in D_range:
+        #     # GridSearch
+        #     #best_params = greedy_kernel_learner.gridSearch(D, "greedy")
+            
+        #     # C'est ici qu'on va appeler l'optimisation bayésienne
+        #     best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
+
+        #     #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "base", best_params))
+        #     tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
 
     elif args["algo"] == "okrff":
         print(f"Processing: okrff with rho: {args['param']}")
@@ -620,8 +637,8 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
         for D in D_range:
             tmp_results.append(greedy_kernel_learner.learn_okrff(D))
 
-
-    with open(args["output_file"], 'wb') as out_file:
-        pickle.dump(tmp_results, out_file, protocol=4)
+    if not exists(args["output_file"]):
+        with open(args["output_file"], 'wb') as out_file:
+            pickle.dump(tmp_results, out_file, protocol=4)
 
     return args["algo"]

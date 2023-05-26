@@ -14,7 +14,7 @@ def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time,
     submission_script += f"#SBATCH --account=def-pager47\n"
     submission_script += f"#SBATCH --nodes=1\n" 
     submission_script += f"#SBATCH --time={time}:00:00\n"
-    submission_script += f"#SBATCH --mem=90G\n#SBATCH --mail-type=END,FAIL\n#SBATCH --mail-user=mabaz21@ulaval.ca\n" 
+    submission_script += f"#SBATCH --mem=20G\n#SBATCH --mail-type=END,FAIL\n#SBATCH --mail-user=jacob.comeau.1@ulaval.ca\n" 
     submission_script += f"#SBATCH --output={exp_file + '.out'}\n\n" 
     submission_script += "module load python/3.8\n virtualenv --no-download $SLURM_TMPDIR/env\n"
     submission_script += "source $SLURM_TMPDIR/env/activate\n pip install --no-index --upgrade pip\n"
@@ -30,7 +30,7 @@ def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time,
     call(["sbatch", submission_path])
 
 def main():
-    datasets = ["ads", "mnist17", "mnist49", "mnist56"] #[ "ads", "adult", "mnist17", "mnist49", "mnist56"]
+    datasets = ["ads", "mnist17"] #[ "ads", "adult", "mnist17", "mnist49", "mnist56"]
     experiments = ["greedy_kernel"]
     landmarks_method = ["random"]
     n_cpu = 40
