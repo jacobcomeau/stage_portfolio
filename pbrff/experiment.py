@@ -23,6 +23,8 @@ RESULTS_PATH = os.environ.get('PBRFF_RESULTS_DIR', join(dirname(abspath(__file__
 def main():
     parser = argparse.ArgumentParser(description="PAC-Bayes RFF Experiment")
     parser.add_argument('-d', '--dataset', type=str, default="ads")
+    parser.add_argument('-r', '--rff', type=int, default=100) # Paramètre ajouté
+    #parser.add_argument('-b', '--beta', type=int, default=10)
     #parser.add_argument('-e', '--experiments', type=str, nargs='+', default=["landmarks_based"])
     parser.add_argument('-e', '--experiments', type=str, nargs='+', default=["greedy_kernel"])
     parser.add_argument('-l', '--landmarks-method', type=str, nargs='+', default=["random"])
@@ -65,13 +67,13 @@ def main():
            'landmarks_D': [8, 16, 32, 64, 128],
            'rho': [1.0, 0.1, 0.01, 0.001, 0.0001],
            'greedy_kernel_N': 20000,
-           #'greedy_kernel_D': np.array([1, 10, 25, 50, 100, 250, 350, 500, 750, 1000], dtype=int),
+           'greedy_kernel_D': np.array([1, 10, 25, 50, 100, 250, 350, 500, 750, 1000], dtype=int),
            'maxTry' : [2, 4, 5, 7, 10],
            'p' : [1, 5, 10, 15, 20],
-           'epsilon' : np.logspace(-3, -0.53, 5),
-           'greedy_kernel_D': np.array([1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250, 275,\
-                               300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1250, 1500, 1750, 2000, 2500, 3000,\
-                               3500, 4000, 4500, 5000], dtype=int)}
+           'epsilon' : np.logspace(-3, -0.53, 5)}
+           #'greedy_kernel_D': np.array([1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250, 275,\
+           #                    300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1250, 1500, 1750, 2000, 2500, 3000,\
+           #                    3500, 4000, 4500, 5000], dtype=int)}
 
     ### Experiments ###
 
@@ -147,13 +149,15 @@ def main():
         #                             {'algo': ["okrff"], 'param': hps['rho']},
         #                             {'algo': ["rff"]}])
 
-        param_grid = ParameterGrid([{'algo': ["pbrff"], 'param': hps['beta']}])
+        param_grid = ParameterGrid([{'algo': ["pbrff"], 'param': hps['beta']}]) # TODO Fonction avant
+        #param_grid = ParameterGrid([{'algo': ["pbrff"], 'param': np.array([args.beta])}])
 
         param_grid = list(param_grid)
         random_state.shuffle(param_grid)
         results_files = {join(paths['greedy_kernel'], f"{p['algo']}_jacob_test" + (f"_{p['param']}.pkl" if ('param' in p) else ".pkl")): p \
                                                                                                             for p in param_grid}
-        results_to_compute = [dict({"output_file":f}, **p) for f, p in results_files.items() if not(exists(f))]
+        #results_to_compute = [dict({"output_file":f}, **p) for f, p in results_files.items() if not(exists(f))]
+        results_to_compute = [dict({"output_file":f}, **p) for f, p in results_files.items()]
 
         if results_to_compute:
             parallel_func = partial(compute_greedy_kernel,
@@ -163,8 +167,9 @@ def main():
                                     random_state=random_state)
             
             for element in results_to_compute:
-                compute_greedy_kernel(element, greedy_kernel_learner_cache_file, gamma, hps['greedy_kernel_D'], random_state)
-            # computed_results = list(Pool(processes=n_cpu).imap(parallel_func, results_to_compute))
+                #compute_greedy_kernel(element, greedy_kernel_learner_cache_file, gamma, hps['greedy_kernel_D'], random_state)
+                compute_greedy_kernel(element, greedy_kernel_learner_cache_file, gamma, np.array([args.rff]), random_state)
+            # computed_results = list(Pool(processes=n_cpu).imap(parallel_func, results_to_compute)) # TODO Fonction avant
             
     print("### DONE ###")
 

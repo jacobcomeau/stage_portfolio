@@ -10,11 +10,14 @@ from scipy.special import logsumexp
 
 from sklearn.utils import check_random_state
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.exceptions import ConvergenceWarning
+from warnings import filterwarnings
 from sklearn.svm import LinearSVC
 from functools import partial
 
 import optuna
 
+filterwarnings('ignore') # Pour enlever les warning
 class GreedyKernelLearner(object):
     """Greedy Kernel learner class
 
@@ -262,12 +265,6 @@ class GreedyKernelLearner(object):
             maxTry = trial.suggest_int("maxTry", 2, 10)
             p = trial.suggest_int("p", 1, 20)
             epsilon = trial.suggest_float("epsilon", 1e-7 , 3e-1, log=True)
-            # E_avg = (p / (2 * self.N)) - (np.sum(self.loss[self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)]) * (1 / self.N))
-            # eps_min = E_avg - (10**(np.round(np.log10(E_avg))))
-            # eps_max = E_avg + (10**(np.round(np.log10(E_avg))))
-            # epsilon = trial.suggest_float("epsilon", eps_min, eps_max, step=(10**(np.round(np.log10(E_avg)))))
-            # epsilon = E_avg - (10**(np.round(np.log10(E_avg))))
-            # print(f"Epsilon : {epsilon}")
             nbrD_choisi, index, _, _ = self.greedy_pbrff(D, maxTry, p, epsilon)
             if index.size == 0:
                 return 1
@@ -279,7 +276,6 @@ class GreedyKernelLearner(object):
         transformed_X_train = self.transform_sincos(kernel_features, self.dataset['X_train'], nbrD_choisi)
         transformed_X_valid = self.transform_sincos(kernel_features, self.dataset['X_valid'], nbrD_choisi)
         clf = LinearSVC(C=trial.suggest_float("C", 1, 10000), random_state=self.random_state)
-        #clf = LinearSVC(C=100, random_state=self.random_state)
         clf.fit(transformed_X_train, self.dataset['y_train'])
         return 1 - accuracy_score(self.dataset['y_valid'], clf.predict(transformed_X_valid))
     
@@ -289,10 +285,11 @@ class GreedyKernelLearner(object):
 
     
     def bayesian_optimiation(self, D, method):
+        optuna.logging.set_verbosity(optuna.logging.WARNING) # Équivalent à verbose = 0
         
         study = optuna.create_study()
         f = partial(self.bayesian_optimization_, method=method, D=D)
-        study.optimize(f, n_trials=100)
+        study.optimize(f, n_trials=100, n_jobs=-1)
 
         if method == "base":
             C = study.best_params['C']
@@ -302,10 +299,7 @@ class GreedyKernelLearner(object):
             maxTry = study.best_params['maxTry']
             p = study.best_params['p']
             epsilon = study.best_params['epsilon']
-            # E_avg = (p / (2 * self.N)) - (np.sum(self.loss[self.random_state.choice(self.omega.shape[1], p, replace=True, p=self.pb_Q)]) * (1 / self.N))
-            # epsilon = E_avg - (10**(np.round(np.log10(E_avg))))
             C = study.best_params['C']
-            #C = 100
 
             return [C, maxTry, p, epsilon]
 
@@ -610,26 +604,30 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
         print(f"Processing: pbrff with beta: {args['param']}")
         greedy_kernel_learner.compute_pb_Q(beta=args['param'])
 
-        def parrallel_exec(D):
-            best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
-            #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
-            return greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3])
+        # def parrallel_exec(D):
+        #     start_time = time.time()
+        #     best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
+        #     print(f"BO : --- {(time.time() - start_time)} seconds --- (D = {D})")
+        #     #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
+        #     return greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3])
 
-        n_cpu = mp.cpu_count()
-        p = mp.Pool(n_cpu)
-        with p:
-            tmp_results = p.map(parrallel_exec, D_range)
+        # n_cpu = mp.cpu_count()
+        # p = mp.Pool(n_cpu)
+        # with p:
+        #     tmp_results = p.map(parrallel_exec, D_range)
+        
+        # p.close()
 
         
-        # for D in D_range:
-        #     # GridSearch
-        #     #best_params = greedy_kernel_learner.gridSearch(D, "greedy")
+        for D in D_range:
+            # GridSearch
+            #best_params = greedy_kernel_learner.gridSearch(D, "greedy")
             
-        #     # C'est ici qu'on va appeler l'optimisation bayésienne
-        #     best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
+            # C'est ici qu'on va appeler l'optimisation bayésienne
+            best_params = greedy_kernel_learner.bayesian_optimiation(D, "greedy")
 
-        #     #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "base", best_params))
-        #     tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
+            #tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "base", best_params))
+            tmp_results.append(greedy_kernel_learner.learn_pbrff(D, "greedy", best_params[0], best_params[1], best_params[2], best_params[3]))
 
     elif args["algo"] == "okrff":
         print(f"Processing: okrff with rho: {args['param']}")
@@ -640,5 +638,13 @@ def compute_greedy_kernel(args, greedy_kernel_learner_file, gamma, D_range, rand
     if not exists(args["output_file"]):
         with open(args["output_file"], 'wb') as out_file:
             pickle.dump(tmp_results, out_file, protocol=4)
+    else:
+        with open(args["output_file"], 'rb') as in_file:
+            results = pickle.load(in_file)
+        
+        results.append(tmp_results[0])
+        
+        with open(args["output_file"], 'wb') as out_file:
+            pickle.dump(results, out_file, protocol=4)
 
     return args["algo"]

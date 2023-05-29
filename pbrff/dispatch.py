@@ -6,7 +6,7 @@ from subprocess import call
 RESULTS_PATH = os.environ.get('PBRFF_RESULTS_DIR', join(dirname(abspath(__file__)), "results"))
 PROJECT_ROOT = dirname(abspath(__file__))
     
-def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time, dispatch_path ):
+def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time, dispatch_path, d):
     exp_file = join(dispatch_path, f"{dataset}__" + "__".join(experiments))
                         
     submission_script = ""
@@ -21,7 +21,7 @@ def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time,
     submission_script += "pip install --no-index -r requirements.txt\n"
     submission_script += f"cd $HOME/dev/git/pbrff\n" 
     submission_script += f"date\n" 
-    submission_script += f"python experiment.py -d {dataset} -e {' '.join(experiments)} -l {' '.join(landmarks_method)} -n 1 "
+    submission_script += f"python experiment.py -d {dataset} -e {' '.join(experiments)} -l {' '.join(landmarks_method)} -r {' '.join(d)} -n 1 $SLURM_ARRAY_TASK_ID"
 
     submission_path = exp_file + ".sh"
     with open(submission_path, 'w') as out_file:
@@ -30,18 +30,22 @@ def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time,
     call(["sbatch", submission_path])
 
 def main():
-    datasets = ["ads", "mnist17"] #[ "ads", "adult", "mnist17", "mnist49", "mnist56"]
+    datasets = ["ads"] #[ "ads", "adult", "mnist17", "mnist49", "mnist56"]
     experiments = ["greedy_kernel"]
     landmarks_method = ["random"]
     n_cpu = 40
-    time = 23
+    time = 1
+
+    D_range = [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250, 275, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1250, 1500, 1750, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
+
 
     dispatch_path = join(RESULTS_PATH, "dispatch")
     if not exists(dispatch_path): makedirs(dispatch_path)
     
     for dataset in datasets:
-        print(f"Launching {dataset}")
-        launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time, dispatch_path)
+        for d in D_range:
+            print(f"Launching {dataset} and D : {d}")
+            launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time, dispatch_path, d)
     
     print("### DONE ###")
 
