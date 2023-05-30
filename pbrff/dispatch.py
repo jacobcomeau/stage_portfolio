@@ -21,7 +21,7 @@ def launch_slurm_experiment(dataset, experiments, landmarks_method, n_cpu, time,
     submission_script += "pip install --no-index -r requirements.txt\n"
     submission_script += f"cd $HOME/dev/git/pbrff\n" 
     submission_script += f"date\n" 
-    submission_script += f"python experiment.py -d {dataset} -e {' '.join(experiments)} -l {' '.join(landmarks_method)} -r {' '.join(d)} -n 1 $SLURM_ARRAY_TASK_ID"
+    submission_script += f"python experiment.py -d {dataset} -e {' '.join(experiments)} -l {' '.join(landmarks_method)} -r {' '.join(d)} -n 1"
 
     submission_path = exp_file + ".sh"
     with open(submission_path, 'w') as out_file:
