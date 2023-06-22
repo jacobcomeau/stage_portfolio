@@ -22,7 +22,7 @@ RESULTS_PATH = os.environ.get('PBRFF_RESULTS_DIR', join(dirname(abspath(__file__
 
 def main():
     parser = argparse.ArgumentParser(description="PAC-Bayes RFF Experiment")
-    parser.add_argument('-d', '--dataset', type=str, default="ads")
+    parser.add_argument('-d', '--dataset', type=str, default="mnist17")
     parser.add_argument('-r', '--rff', type=int, default=100) # Paramètre ajouté
     #parser.add_argument('-b', '--beta', type=int, default=10)
     #parser.add_argument('-e', '--experiments', type=str, nargs='+', default=["landmarks_based"])
